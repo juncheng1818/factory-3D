@@ -6,6 +6,7 @@
 <script>
 import * as THREE from 'three'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
 import { OBJLoader, MTLLoader } from 'three-obj-mtl-loader'
 // 在vue里 非响应式变量可声明data之外,提高性能呢
 
@@ -18,9 +19,15 @@ import { OutlinePass } from 'three/examples/jsm/postprocessing/OutlinePass.js'
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js'
 
+import {
+	CSS3DRenderer,
+	CSS3DObject,
+} from 'three/examples/jsm/renderers/CSS3DRenderer.js'
+
 // import 'three-onevent/onEvent.js'
 
 const scene = new THREE.Scene()
+const scene2 = new THREE.Scene()
 const raycaster = new THREE.Raycaster()
 const mouse = new THREE.Vector2()
 export default {
@@ -46,6 +53,9 @@ export default {
 			composer: null,
 			outlinePass: null,
 			renderPass: null,
+			render3D: null,
+
+			css3DObject: null,
 		}
 	},
 	//监听属性 类似于data概念
@@ -86,6 +96,7 @@ export default {
 				shadowMap: true, // 开启阴影渲染 大量计算
 				alpha: true, // 画布是否透明
 			})
+
 			// 设置场景显示区背景色
 			this.renderer.setClearColor(0x000000, 0)
 			// 场景显示区尺寸 (铺满)
@@ -93,18 +104,30 @@ export default {
 			// 设置像素比 如果移动端掉帧 去掉这个试试
 			this.renderer.setPixelRatio(window.devicePixelRatio)
 			// 可以如此设置样式 例如确保cssRender与render不遮盖
-			// renderer.domElement.style.position = "absolute";
-			// renderer.domElement.style.top = 0;
-			// renderer.domElement.style.zIndex = "1";
+			this.renderer.domElement.style.position = 'absolute'
+			this.renderer.domElement.style.top = 0
+			this.renderer.domElement.style.zIndex = '1'
+
+			//新开一个3D渲染器
+			this.render3D = new CSS3DRenderer()
+			//设置渲染器大小
+			this.render3D.setSize(container.clientWidth, container.clientHeight)
+			console.log(this.render3D)
+
+			//需要设置位置
+			this.render3D.domElement.style.position = 'absolute'
+			this.render3D.domElement.style.top = 0
+			this.render3D.domElement.style.zIndex = '99'
 			// 挂载dom
+			container.appendChild(this.render3D.domElement)
 			container.appendChild(this.renderer.domElement)
 		},
 		initScene() {
 			// 当你需要去更新你场景中对象矩阵的时候，会涉及到计算，如果只是静态对象，并且操作不频繁，你可以关闭matrixAutoUpdate参数，手动去更新矩阵
 			scene.matrixAutoUpdate = false
 			// 辅助坐标系
-			var axes = new THREE.AxisHelper(20)
-			scene.add(axes)
+			// var axes = new THREE.AxisHelper(20)
+			// scene.add(axes)
 			// 设置背景
 			// 添加天空盒第一种方式
 			/**  我从官网扒的星空天空盒
@@ -150,28 +173,8 @@ export default {
 
 			//加载相机的鼠标操作 左键上下左右拖动 右键平移 滑轮缩放
 			// 引入 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls"; // 相机控制
-			this.controls = new OrbitControls(
-				this.camera,
-				this.renderer.domElement
-			)
-			//设置相机初始焦点
-			this.controls.target = new THREE.Vector3(0, 1, 0) //(0,1,0);
-			//是否可以缩放
-			this.controls.enableZoom = true
-			//是否自动旋转
-			this.controls.autoRotate = false
-			//最大纵向旋转角度
-			this.controls.maxPolarAngle = Math.PI / 2
-			//是否开启右键拖拽
-			this.controls.enablePan = true
-			// 设置旋转速度
-			this.controls.rotateSpeed = 1
-			// 使动画循环使用时阻尼或自传，意思是否有惯性
-			this.controls.enableDamping = true
-			// 设置相机距离原点的最近距离
-			this.controls.minDistance = 1
-			// 设置相机距离原点的最远距离
-			this.controls.maxDistance = 20000
+			new OrbitControls(this.camera, this.renderer.domElement)
+			new OrbitControls(this.camera, this.render3D.domElement)
 		},
 		initLight() {
 			//环境光 意思就是,为什么明明我在屋子里背光,按理说一片黑暗才对,但是还有光呢,环境反射的光
@@ -190,10 +193,24 @@ export default {
 			TWEEN.update()
 			requestAnimationFrame(this.startAnimate) // 递归调用
 			this.renderer.render(scene, this.camera)
-
+			this.render3D.render(scene2, this.camera)
 			if (this.composer) {
 				this.composer.render()
 			}
+		},
+
+		absPos(myMesh) {
+			myMesh.geometry.computeBoundingBox()
+
+			var boundingBox = myMesh.geometry.boundingBox
+
+			var position = new THREE.Vector3()
+			position.subVectors(boundingBox.max, boundingBox.min)
+			position.multiplyScalar(0.5)
+			position.add(boundingBox.min)
+
+			position.applyMatrix4(myMesh.matrixWorld)
+			this.initTooltip(position.x, position.y, position.z, myMesh.name)
 		},
 
 		initMainScene() {
@@ -208,18 +225,23 @@ export default {
 						.setMaterials(materials)
 						.load(`${this.publicPath}/static/工厂.obj`, (obj) => {
 							console.log(obj)
-							// var mesh = obj.children[11]
-							// mesh.material[0] = new THREE.MeshPhongMaterial({
-							// 	map: new THREE.TextureLoader().load(
-							// 		`${this.publicPath}/gird.jpg`
-							// 	),
+
+							// obj.traverse((child) => {
+							// 	if (child instanceof THREE.Mesh) {
+							// 		this.absPos(child) // call our function
+							// 	}
 							// })
-							// obj.position.set(1, 1, 1)
+
 							obj.scale.set(1, 1, 1)
 							scene.add(obj)
 						})
 				}
 			)
+
+			// new GLTFLoader().load(`${this.publicPath}/static/工厂.gltf`,(gltf)=>{
+			// 	console.log(gltf)
+			// 	scene.add(gltf.scene)
+			// })
 		},
 
 		onMouseClick(event) {
@@ -232,12 +254,14 @@ export default {
 
 			var intersects = raycaster.intersectObjects(scene.children)
 			if (intersects.length > 0) {
-				this.outlineObj(intersects[0].object)
+				this.absPos(intersects[0].object) //先定个位置，然后渲染信息提示
+				this.outlineObj(intersects[0].object) //渲染高亮
 			} else {
 				if (this.composer && this.outlinePass) {
 					this.composer.removePass(this.outlinePass)
-					this.composer=null;
-					this.outlinePass=null
+					this.removeTooltip()
+					this.composer = null
+					this.outlinePass = null
 				}
 			}
 		},
@@ -267,6 +291,42 @@ export default {
 
 			this.outlinePass.selectedObjects = [selectedObjects] // 需要高光的obj
 		},
+
+		//生成CSS对象
+		createdCSS3DLabel(name) {
+			//增加一个CSS3D对象
+			let element = document.createElement('div')
+			element.className = 'infoBox'
+			let lableTitle = document.createElement('div')
+			lableTitle.textContent = name
+			lableTitle.style.color = 'red'
+			lableTitle.style['font-size'] = '12px'
+			element.appendChild(lableTitle)
+
+			return element
+		},
+
+		initTooltip(x, y, z, name) {
+			this.removeTooltip()
+			//生成CSSDOM对象
+			let element = this.createdCSS3DLabel(name)
+			//把生成的CSSDOM对象处理成three的节点对象
+			let css3DObject = new CSS3DObject(element)
+			//设置CSS3DObject对象
+			css3DObject.position.x = x
+			css3DObject.position.y = y + 20
+			css3DObject.position.z = z
+			//在第二个场景中添加这个对象
+			scene2.add(css3DObject)
+		},
+
+		removeTooltip() {
+			if (scene2.children.length > 0) {
+				scene2.children.map((item) => {
+					scene2.remove(item)
+				})
+			}
+		},
 	},
 	//生命周期 - 创建完成（可以访问当前this实例）
 	created() {},
@@ -285,5 +345,9 @@ export default {
 	margin: 0;
 	padding: 0;
 	overflow: hidden;
+}
+
+.infoBox {
+	border: 1px solid pink;
 }
 </style>
