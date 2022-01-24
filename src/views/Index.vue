@@ -1,6 +1,9 @@
 <!-- index -->
 <template>
-	<div ref="container" id="container"></div>
+	<div style="position: relative">
+		<div ref="container" id="container"></div>
+		<button @click="btn()">123</button>
+	</div>
 </template>
 
 <script>
@@ -38,8 +41,11 @@ export default {
 		return {
 			camera: null,
 			controls: null,
+			controls2: null,
 			renderer: null,
 			mesh: null,
+			group: null,
+			object3D: null,
 
 			posx: require('../assets/posx.jpg'),
 			negx: require('../assets/negx.jpg'),
@@ -158,23 +164,38 @@ export default {
 				100000 // 距离相机多远就不渲染了?
 			)
 			// 相机位置
-			this.camera.position.set(0, 100, 250) //设置相机位置
+			this.camera.position.set(0, 150, 300) //设置相机位置
 
 			//相机以Y轴方向为上方（当值为1时即为上） 限制在y轴只能在正方向,比如加了地面元素之后,别跑到地下穿模了
 			this.camera.up.x = 0
 			this.camera.up.y = 1
 			this.camera.up.z = 0
 			//相机看向哪个坐标 (原点)
-			this.camera.lookAt({
-				x: 0,
-				y: 0,
-				z: 0,
-			})
+			this.camera.lookAt(scene.position)
 
 			//加载相机的鼠标操作 左键上下左右拖动 右键平移 滑轮缩放
 			// 引入 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls"; // 相机控制
-			new OrbitControls(this.camera, this.renderer.domElement)
-			new OrbitControls(this.camera, this.render3D.domElement)
+			this.controls = new OrbitControls(
+				this.camera,
+				this.renderer.domElement
+			)
+
+			this.controls2 = new OrbitControls(
+				this.camera,
+				this.render3D.domElement
+			)
+
+			this.controlsSetOption(this.controls)
+			this.controlsSetOption(this.controls2)
+		},
+
+		controlsSetOption(controls) {
+			controls.enableDamping = true // an animation loop is required when either damping or auto-rotation are enabled
+			controls.dampingFactor = 0.05
+			controls.screenSpacePanning = false
+			controls.minDistance = 100
+			controls.maxDistance = 500
+			controls.maxPolarAngle = Math.PI / 2
 		},
 		initLight() {
 			//环境光 意思就是,为什么明明我在屋子里背光,按理说一片黑暗才对,但是还有光呢,环境反射的光
@@ -192,14 +213,19 @@ export default {
 		startAnimate: function () {
 			TWEEN.update()
 			requestAnimationFrame(this.startAnimate) // 递归调用
+
+			this.controls.update()
+			this.controls2.update()
 			this.renderer.render(scene, this.camera)
 			this.render3D.render(scene2, this.camera)
+
 			if (this.composer) {
 				this.composer.render()
 			}
 		},
 
 		absPos(myMesh) {
+			console.log(myMesh)
 			myMesh.geometry.computeBoundingBox()
 
 			var boundingBox = myMesh.geometry.boundingBox
@@ -211,10 +237,12 @@ export default {
 
 			position.applyMatrix4(myMesh.matrixWorld)
 			this.initTooltip(position.x, position.y, position.z, myMesh.name)
+			console.log(position.x, position.y, position.z, myMesh.name)
 		},
 
 		initMainScene() {
 			let manager = new THREE.LoadingManager()
+			this.object3D = new THREE.Object3D()
 
 			new MTLLoader(manager).load(
 				`${this.publicPath}/static/工厂.mtl`,
@@ -233,7 +261,8 @@ export default {
 							// })
 
 							obj.scale.set(1, 1, 1)
-							scene.add(obj)
+							this.object3D.add(obj)
+							scene.add(this.object3D)
 						})
 				}
 			)
@@ -327,6 +356,25 @@ export default {
 				})
 			}
 		},
+
+		btn() {
+			console.log(this.object3D.rotation.y)
+			var ro1 = new TWEEN.Tween(this.object3D.rotation)
+			ro1.to(
+				{
+					y: Math.PI + (4.031592845916748),
+				},
+				1000
+			)
+			ro1.easing(TWEEN.Easing.Sinusoidal.InOut)
+
+			ro1.start()
+
+			ro1.onComplete((rotation)=>{
+				console.log(rotation)
+				console.log('动画完成')
+			})
+		},
 	},
 	//生命周期 - 创建完成（可以访问当前this实例）
 	created() {},
@@ -345,6 +393,17 @@ export default {
 	margin: 0;
 	padding: 0;
 	overflow: hidden;
+	z-index: 10;
+	position: absolute;
+	top: 0;
+	left: 0;
+}
+
+button {
+	position: absolute;
+	left: 0;
+	top: 0;
+	z-index: 11;
 }
 
 .infoBox {

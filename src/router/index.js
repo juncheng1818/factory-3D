@@ -11,6 +11,11 @@ const routes = [
     component: ()=>import('../views/Index')
   },
   {
+    path: '/Points',
+    name: 'Points',
+    component: ()=>import('../views/Points')
+  },
+  {
     path: '/about',
     name: 'About',
     // route level code-splitting
